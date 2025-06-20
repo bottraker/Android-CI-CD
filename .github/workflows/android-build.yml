@@ -1,0 +1,85 @@
+# .github/workflows/android-build.yml
+name: Android CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  # Permitir ejecución manual
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    # 1. Checkout del código
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    # 2. Configurar Java 17 (requerido para Android)
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        
+    # 3. Cachear dependencias de Gradle para acelerar builds
+    - name: Cache Gradle packages
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
+          
+    # 4. Hacer ejecutable el script de Gradle
+    - name: Make gradlew executable
+      run: chmod +x ./gradlew
+      
+    # 5. Validar wrapper de Gradle (seguridad)
+    - name: Validate Gradle wrapper
+      uses: gradle/wrapper-validation-action@v2
+      
+    # 6. Limpiar y compilar el proyecto
+    - name: Clean and Build
+      run: ./gradlew clean build
+      
+    # 7. Ejecutar tests unitarios
+    - name: Run Unit Tests
+      run: ./gradlew test
+      
+    # 8. Construir APK de debug
+    - name: Build Debug APK
+      run: ./gradlew assembleDebug
+      
+    # 9. Construir APK de release (sin firmar por ahora)
+    - name: Build Release APK
+      run: ./gradlew assembleRelease
+      
+    # 10. Subir APKs como artefactos
+    - name: Upload Debug APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: debug-apk
+        path: app/build/outputs/apk/debug/*.apk
+        
+    - name: Upload Release APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-apk
+        path: app/build/outputs/apk/release/*.apk
+        
+    # 11. Crear release automático en tags
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          app/build/outputs/apk/debug/*.apk
+          app/build/outputs/apk/release/*.apk
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
